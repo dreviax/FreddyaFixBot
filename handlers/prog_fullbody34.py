@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 SETS_REPS = "2 подхода по 4-8 повторений (Выполнять в 0-2 повторений в запасе)"
 
-class FullBody3States(StatesGroup):
+class FullBody34States(StatesGroup):
     choosing_muscle_group = State()
     choosing_exercise = State()
     entering_custom_exercise = State()
@@ -61,14 +61,14 @@ def get_exercise_keyboard(muscle_group: str, subgroup: str, selected_exercises: 
     builder.adjust(1)
     return builder.as_markup()
 
-async def start_fullbody3(callback: types.CallbackQuery, state: FSMContext):
+async def start_fullbody34(callback: types.CallbackQuery, state: FSMContext):
     user_id = str(callback.from_user.id)
 
     data = await state.get_data()
-    days = data.get("days", 3)
+    days = data.get("days", 34)  # Устанавливаем 34 как индикатор 3/4 дней
 
     await state.clear()  # Очистка FSM перед началом
-    await state.set_state(FullBody3States.choosing_muscle_group)
+    await state.set_state(FullBody34States.choosing_muscle_group)
     await state.update_data({
         "current_step": 0,
         "selected": [],
@@ -77,7 +77,7 @@ async def start_fullbody3(callback: types.CallbackQuery, state: FSMContext):
         "days_per_week": days,
         "user_id": user_id
     })
-    logger.info(f"Starting FullBody 3.0 for user {user_id} with {days} days")
+    logger.info(f"Starting FullBody 3/4 for user {user_id} with 3/4 days")
     await send_next_muscle(callback, state)
     await callback.answer()
 
@@ -96,7 +96,7 @@ async def send_next_muscle(message: types.CallbackQuery | types.Message, state: 
 
     if step >= len(flat_sequence):
         selected = data.get("selected", [])
-        days = data.get("days_per_week", 3)
+        days = data.get("days_per_week", 34)
 
         expected_count = sum(1 if isinstance(count, int) else sum(sub_count for _, sub_count in count) for _, _, count in muscle_sequence)
         if len(selected) != expected_count:
@@ -108,7 +108,7 @@ async def send_next_muscle(message: types.CallbackQuery | types.Message, state: 
         user_program[user_id] = {
             "days": days,
             "program": selected,
-            "type": "FullBody 3.0",
+            "type": "FullBody 3/4",
             "sets_reps": SETS_REPS
         }
         save_user_program()
@@ -240,7 +240,7 @@ async def custom_exercise_button_pressed(callback: types.CallbackQuery, state: F
     )
 
     await state.update_data({"request_message_id": message.message_id})
-    await state.set_state(FullBody3States.entering_custom_exercise)
+    await state.set_state(FullBody34States.entering_custom_exercise)
     await callback.answer()
 
 async def process_custom_exercise(message: types.Message, state: FSMContext):
@@ -288,10 +288,10 @@ async def process_custom_exercise(message: types.Message, state: FSMContext):
     if len(selected_for_muscle) >= required_count:
         logger.debug(f"Completed custom selection for {muscle_group}/{subgroup}: {selected_for_muscle}")
         await state.update_data({"current_step": data.get("current_step", 0) + 1})
-        await state.set_state(FullBody3States.choosing_muscle_group)
+        await state.set_state(FullBody34States.choosing_muscle_group)
         await send_next_muscle(message, state)
     else:
-        await state.set_state(FullBody3States.choosing_muscle_group)
+        await state.set_state(FullBody34States.choosing_muscle_group)
         await message.answer(
             f"✅ <b>Выбрано {len(selected_for_muscle)}/{required_count} для {subgroup}</b>",
             reply_markup=get_exercise_keyboard(
@@ -307,7 +307,7 @@ async def cancel_custom_exercise(callback: types.CallbackQuery, state: FSMContex
     subgroup = data.get("current_subgroup")
     selected_exercises = data.get("selected_exercises", [])
 
-    await state.set_state(FullBody3States.choosing_muscle_group)
+    await state.set_state(FullBody34States.choosing_muscle_group)
     await callback.message.edit_text(
         f"💪 <b>Выберите {data.get('required_count')} упражнение для {subgroup}</b>",
         reply_markup=get_exercise_keyboard(
@@ -318,24 +318,46 @@ async def cancel_custom_exercise(callback: types.CallbackQuery, state: FSMContex
     )
     await callback.answer()
 
-def register_fullbody3_handlers(dp: Dispatcher):
-    dp.callback_query.register(start_fullbody3, F.data == "prog_fullbody3")
+async def clear_program(callback: types.CallbackQuery, state: FSMContext):
+    user_id = str(callback.from_user.id)
+
+    if user_id in user_program:
+        del user_program[user_id]
+        save_user_program()
+        logger.info(f"Program removed for user {user_id}")
+
+    await callback.message.edit_text(
+        "🗑 <b>Программа удалена!</b>\n"
+        "Создайте новую с помощью /programma или /start",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏋️ Новая программа", callback_data="start_programma")]
+        ])
+    )
+    await state.clear()
+    await callback.answer()
+
+def register_fullbody34_handlers(dp: Dispatcher):
+    dp.callback_query.register(start_fullbody34, F.data == "prog_fullbody34")
     dp.callback_query.register(
         exercise_selected, 
-        FullBody3States.choosing_muscle_group,
+        FullBody34States.choosing_muscle_group,
         F.data.startswith("ex_")
     )
     dp.callback_query.register(
         custom_exercise_button_pressed,
-        FullBody3States.choosing_muscle_group,
+        FullBody34States.choosing_muscle_group,
         F.data.startswith("custom_ex_")
     )
     dp.message.register(
         process_custom_exercise,
-        FullBody3States.entering_custom_exercise
+        FullBody34States.entering_custom_exercise
     )
     dp.callback_query.register(
         cancel_custom_exercise,
-        FullBody3States.entering_custom_exercise,
+        FullBody34States.entering_custom_exercise,
         F.data == "cancel_custom_exercise"
+    )
+    dp.callback_query.register(
+        clear_program,
+        F.data == "clear_program"
     )

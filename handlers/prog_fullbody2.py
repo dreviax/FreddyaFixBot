@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SETS_REPS = "3 подхода, 3-8 повторений"
+SETS_REPS = "2 подхода по 4-8 повторений (Выполнять в 0-2 повторений в запасе)"
 
 class FullBody2States(StatesGroup):
     choosing_muscle_group = State()
@@ -29,16 +29,14 @@ muscle_sequence = [
     ("Грудь", "Низ груди", 1),
     ("Руки", "Бицепс", 1),
     ("Руки", "Трицепс", 1),
-    ("Ноги", "Квадрицепсы", [
-        ("Квадрицепсы (приседания)", 1),
-        ("Квадрицепсы (разгибания)", 1)
-    ]),
+    ("Ноги", "Квадрицепсы", 1),
     ("Ноги", "Бицепс бедра", [
         ("Бицепс бедра", 1),
         ("Hinge", 1)
     ]),
     ("Ноги", "Икры", 1),
     ("Ноги", "Приводящие", 1),
+    ("Ноги", "Ягодицы", 1),
 ]
 
 def get_exercise_keyboard(muscle_group: str, subgroup: str, selected_exercises: list) -> InlineKeyboardMarkup:
@@ -100,7 +98,7 @@ async def send_next_muscle(message: types.CallbackQuery | types.Message, state: 
         selected = data.get("selected", [])
         days = data.get("days_per_week", 2)
 
-        expected_count = sum(1 if isinstance(count, int) else len(count) for _, _, count in muscle_sequence)
+        expected_count = sum(1 if isinstance(count, int) else sum(sub_count for _, sub_count in count) for _, _, count in muscle_sequence)
         if len(selected) != expected_count:
             logger.error(f"Incomplete program for user {user_id}: expected {expected_count}, got {len(selected)} exercises: {selected}")
             await message.answer("❗ Ошибка: не все упражнения выбраны. Начните заново с /programma")

@@ -16,6 +16,8 @@ from handlers.prog_fullbody3 import register_fullbody3_handlers
 from handlers.prog_hybrid3 import register_hybrid3_handlers, muscle_sequence_day1, muscle_sequence_day2, muscle_sequence_day3
 from handlers.prog_upperlower2 import register_upperlower2_handlers, muscle_sequence_day1 as ul_day1, muscle_sequence_day2 as ul_day2
 from handlers.prog_ap2 import register_pushpull2_handlers, muscle_sequence_day1 as ap_day1, muscle_sequence_day2 as ap_day2
+from handlers.prog_lt2 import register_limbs_torso2_handlers, muscle_sequence_day1 as lt_day1, muscle_sequence_day2 as lt_day2
+from handlers.prog_fullbody34 import register_fullbody34_handlers
 import settings.markups as nav
 import settings.config as cfg
 from utils import check_sub, are_markups_equal
@@ -56,7 +58,7 @@ async def send_split_message(bot, chat_id: int, text: str, reply_markup=None):
         await bot.send_message(chat_id=chat_id, text=current_chunk.strip(), reply_markup=reply_markup)
 
 async def format_day(day_num: int, day_name: str, exercises: list, muscle_seq: list, sets_reps: str, is_multi_day: bool = True):
-    prefix = f"{day_num}️⃣ <b>День {day_num} ({day_name})</b>\n" if is_multi_day else ""
+    prefix = f"\n{day_num}️⃣ <b>День {day_num} ({day_name})</b>\n" if is_multi_day else ""
     day_text = prefix
     muscle_groups = {}
     subgroup_to_group = {}
@@ -74,45 +76,23 @@ async def format_day(day_num: int, day_name: str, exercises: list, muscle_seq: l
 
     for exercise in exercises:
         try:
-            subgroup, exercise_name = exercise.split(": ", 1)
-            muscle_group = subgroup_to_group.get(subgroup, "Прочее")
-            if muscle_group not in muscle_groups:
-                muscle_groups[muscle_group] = {}
-            if subgroup not in muscle_groups[muscle_group]:
-                muscle_groups[muscle_group][subgroup] = []
-            muscle_groups[muscle_group][subgroup].append(exercise_name)
+            subgroup, ex_name = exercise.split(": ", 1)
+            group = subgroup_to_group.get(subgroup, "Unknown")
+            if group not in muscle_groups:
+                muscle_groups[group] = {}
+            if subgroup not in muscle_groups[group]:
+                muscle_groups[group][subgroup] = []
+            muscle_groups[group][subgroup].append(ex_name)
         except ValueError:
             logger.warning(f"Invalid exercise format: {exercise}")
-            muscle_group = "Прочее"
-            if muscle_group not in muscle_groups:
-                muscle_groups[muscle_group] = {}
-            if "Неизвестная группа" not in muscle_groups[muscle_group]:
-                muscle_groups[muscle_group]["Неизвестная группа"] = []
-            muscle_groups[muscle_group]["Неизвестная группа"].append(exercise)
+            continue
 
-    for muscle_group in sorted(muscle_groups.keys()):
-        day_text += f"\n💪 <b>{muscle_group}</b>\n"
-        if muscle_group == "Ноги" and is_multi_day:
-            for parent_subgroup in ["Квадрицепсы", "Бицепс бедра"]:
-                if any(sub in muscle_groups[muscle_group] for sub in nested_subgroups[parent_subgroup]):
-                    day_text += f"  ➡️ <b><i>{parent_subgroup}</i></b>\n"
-                    for subgroup in sorted(nested_subgroups[parent_subgroup]):
-                        if subgroup in muscle_groups[muscle_group]:
-                            day_text += f"    ➡️ <b><i>{subgroup}</i></b>\n"
-                            for exercise in muscle_groups[muscle_group][subgroup]:
-                                day_text += f"      • {exercise} ({sets_reps})\n"
-            other_subgroups = [sub for sub in muscle_groups[muscle_group] if sub not in sum(nested_subgroups.values(), [])]
-            for subgroup in sorted(other_subgroups):
-                day_text += f"  ➡️ <b><i>{subgroup}</i></b>\n"
-                for exercise in muscle_groups[muscle_group][subgroup]:
-                    day_text += f"    • {exercise} ({sets_reps})\n"
-        else:
-            for subgroup in sorted(muscle_groups[muscle_group].keys()):
-                day_text += f"  ➡️ <b><i>{subgroup}</i></b>\n"
-                for exercise in muscle_groups[muscle_group][subgroup]:
-                    day_text += f"    • {exercise} ({sets_reps})\n"
-
-    logger.debug(f"Formatted day {day_num} ({day_name}) for user: {day_text}")
+    for group in muscle_groups:
+        day_text += f"💪 <b>{group}</b>\n"
+        for subgroup in muscle_groups[group]:
+            day_text += f"  ➡️ {subgroup}\n"
+            for ex in muscle_groups[group][subgroup]:
+                day_text += f"    - {ex} ({sets_reps})\n"
     return day_text
 
 async def display_program(message: types.Message, user_id: str, first_name: str) -> bool:
@@ -134,9 +114,13 @@ async def display_program(message: types.Message, user_id: str, first_name: str)
         "💡 <i>Если ты хочешь постепенно добавлять объем, добавляй! Но только если твое тело это позволяет, не нагружай себя просто так.</i>\n\n"
     )
     if program_type == "4 день верх/низ":
-        intro_text += "ℹ️ <i>Программа на 4 дня состоит из двух чередующихся дней (верх/низ), которые нужно повторять.</i>\n\n"
-    elif program_type == "4 day перед/зад":
-        intro_text += "ℹ️ <i>Программа на 4 дня состоит из двух чередующихся дней (перед/зад), которые нужно повторять.</i>\n\n"
+        intro_text += "ℹ️ <i>Программа на 4 дня состоит из двух чередующихся дней (верх/низ). День 1 и 3 — верх, день 2 и 4 — низ.</i>\n\n"
+    elif program_type == "4 день перед/зад":
+        intro_text += "ℹ️ <i>Программа на 4 дня состоит из двух чередующихся дней (перед/зад). День 1 и 3 — перед, день 2 и 4 — зад.</i>\n\n"
+    elif program_type == "4 день конечности/торс":
+        intro_text += "ℹ️ <i>Программа на 4 дня состоит из двух чередующихся дней (конечности/торс). День 1 и 3 — конечности, день 2 и 4 — торс.</i>\n\n"
+    elif program_type == "Hybrid 3.0":
+        intro_text += "ℹ️ <i>Программа на 3 дня состоит из одного дня фуллбоди и двух дней, разделенных на верх и низ.</i>\n\n"
     intro_text += (
         f"🏋️ <b>Ваша программа тренировок</b>\n"
         f"📅 Тип: {program_type}\n"
@@ -159,52 +143,75 @@ async def display_program(message: types.Message, user_id: str, first_name: str)
         logger.info(f"Displayed {program_type} program for user {user_id}")
         return True
 
-    if isinstance(program["program"], dict):
-        if program_type == "3 day гибрид верх/низа и фулбади":
-            days_config = [
-                (1, "Фулбади", program["program"]["day1"], muscle_sequence_day1),
-                (2, "Верх", program["program"]["day2"], muscle_sequence_day2),
-                (3, "Низ", program["program"]["day3"], muscle_sequence_day3)
-            ]
-        elif program_type == "4 день верх/низ":
-            days_config = [
-                (1, "Верх", program["program"]["day1"], ul_day1),
-                (2, "Низ", program["program"]["day2"], ul_day2)
-            ]
-        elif program_type == "4 day перед/зад":
-            days_config = [
-                (1, "Перед", program["program"]["day1"], ap_day1),
-                (2, "Зад", program["program"]["day2"], ap_day2)
-            ]
-        else:
-            logger.warning(f"Unknown dict-based program type: {program_type} for user {user_id}")
-            return False
-
-        if program_type in ["4 день верх/низ", "4 day перед/зад"]:
-            full_text = intro_text + "\n"
-            for day_num, day_name, exercises, muscle_seq in days_config:
-                day_text = await format_day(day_num, day_name, exercises, muscle_seq, sets_reps)
-                full_text += day_text + "\n"
-            full_text += footer_text
-            logger.debug(f"Full text length for user {user_id} ({program_type}): {len(full_text)}")
-            if len(full_text) <= 4000:
-                await bot.send_message(message.chat.id, full_text, reply_markup=markup)
-                logger.info(f"Displayed {program_type} program for user {user_id} in single message")
-            else:
-                await send_split_message(bot, message.chat.id, full_text, reply_markup=markup)
-                logger.info(f"Displayed {program_type} program for user {user_id} in split messages")
-            return True
-
-        for idx, (day_num, day_name, exercises, muscle_seq) in enumerate(days_config):
-            day_text = await format_day(day_num, day_name, exercises, muscle_seq, sets_reps)
-            text = (intro_text + "\n" + day_text) if idx == 0 else day_text
-            reply_markup = markup if idx == len(days_config) - 1 else None
-            footer = footer_text if idx == len(days_config) - 1 else ""
-            await send_split_message(bot, message.chat.id, text + footer, reply_markup=reply_markup)
+    if isinstance(program["program"], list) and program_type == "FullBody 3/4":
+        response = intro_text + f"ℹ️ <i>Программа одинакова для всех дней тренировок (3 дня на первой неделе, 4 дня на второй).</i>\n\n<b>Упражнения:</b>\n"
+        day_text = await format_day(1, "", program["program"], fullbody_sequence, sets_reps, is_multi_day=False)
+        response += day_text
+        await send_split_message(bot, message.chat.id, response + footer_text, reply_markup=markup)
         logger.info(f"Displayed {program_type} program for user {user_id}")
         return True
 
-    logger.warning(f"Invalid program structure for user {user_id}: {program}")
+    if isinstance(program["program"], list) and program_type == "Hybrid 3.0":
+        response = intro_text
+        muscle_sequences = [muscle_sequence_day1, muscle_sequence_day2, muscle_sequence_day3]
+        day_names = ["Фуллбоди", "Верх", "Низ"]
+        for day_idx, (day_data, muscle_seq, day_name) in enumerate(zip(program["program"], muscle_sequences, day_names), 1):
+            day_text = await format_day(day_idx, day_name, day_data["exercises"], muscle_seq, sets_reps)
+            response += day_text
+        await send_split_message(bot, message.chat.id, response + footer_text, reply_markup=markup)
+        logger.info(f"Displayed {program_type} program for user {user_id}")
+        return True
+
+    if isinstance(program["program"], dict):
+        if program_type == "3 day гибрид верх/низа и фулбади":
+            days_config = [
+                (1, "Фулбади", program["program"].get("day1", []), muscle_sequence_day1),
+                (2, "Верх", program["program"].get("day2", []), muscle_sequence_day2),
+                (3, "Низ", program["program"].get("day3", []), muscle_sequence_day3),
+            ]
+            response = intro_text
+            for day_num, day_name, exercises, muscle_seq in days_config:
+                day_text = await format_day(day_num, day_name, exercises, muscle_seq, sets_reps)
+                response += day_text
+            await send_split_message(bot, message.chat.id, response + footer_text, reply_markup=markup)
+            logger.info(f"Displayed {program_type} program for user {user_id}")
+            return True
+        elif program_type == "4 день верх/низ":
+            days_config = [
+                (1, "Верх (1/3 день)", program["program"].get("day1", []), ul_day1),
+                (2, "Низ (2/4 день)", program["program"].get("day2", []), ul_day2),
+            ]
+            response = intro_text
+            for day_num, day_name, exercises, muscle_seq in days_config:
+                day_text = await format_day(day_num, day_name, exercises, muscle_seq, sets_reps)
+                response += day_text
+            await send_split_message(bot, message.chat.id, response + footer_text, reply_markup=markup)
+            logger.info(f"Displayed {program_type} program for user {user_id}")
+            return True
+        elif program_type == "4 день перед/зад":
+            days_config = [
+                (1, "Перед (1/3 день)", program["program"].get("day1", []), ap_day1),
+                (2, "Зад (2/4 день)", program["program"].get("day2", []), ap_day2),
+            ]
+            response = intro_text
+            for day_num, day_name, exercises, muscle_seq in days_config:
+                day_text = await format_day(day_num, day_name, exercises, muscle_seq, sets_reps)
+                response += day_text
+            await send_split_message(bot, message.chat.id, response + footer_text, reply_markup=markup)
+            logger.info(f"Displayed {program_type} program for user {user_id}")
+            return True
+        elif program_type == "4 день конечности/торс":
+            days_config = [
+                (1, "Конечности (1/3 день)", program["program"].get("day1", []), lt_day1),
+                (2, "Торс (2/4 день)", program["program"].get("day2", []), lt_day2),
+            ]
+            response = intro_text
+            for day_num, day_name, exercises, muscle_seq in days_config:
+                day_text = await format_day(day_num, day_name, exercises, muscle_seq, sets_reps)
+                response += day_text
+            await send_split_message(bot, message.chat.id, response + footer_text, reply_markup=markup)
+            logger.info(f"Displayed {program_type} program for user {user_id}")
+            return True
     return False
 
 @dp.message(Command("tutorials"))
@@ -459,6 +466,8 @@ async def main():
     register_hybrid3_handlers(dp)
     register_upperlower2_handlers(dp)
     register_pushpull2_handlers(dp)
+    register_limbs_torso2_handlers(dp)
+    register_fullbody34_handlers(dp)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

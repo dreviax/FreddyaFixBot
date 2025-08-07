@@ -11,7 +11,7 @@ import re
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-SETS_REPS = "1-2 подхода по 3-6 повторений (Выполнять в 0-2 повторений в запасе)"
+SETS_REPS = "2 подхода по 4-8 повторений (Выполнять в 0-2 повторений в запасе)"
 
 class PushPullStates(StatesGroup):
     choosing_muscle = State()
@@ -24,10 +24,7 @@ muscle_sequence_day1 = [  # Push (Day 1)
     ("Грудь", "Верх груди", 1),
     ("Грудь", "Низ груди", 1),
     ("Руки", "Трицепс", 1),
-    ("Ноги", "Квадрицепсы", [
-        ("Квадрицепсы (приседания)", 1),
-        ("Квадрицепсы (разгибания)", 1)
-    ]),
+    ("Ноги", "Квадрицепсы", 1),
     ("Ноги", "Приводящие", 1),
 ]
 
@@ -42,6 +39,7 @@ muscle_sequence_day2 = [  # Pull (Day 2)
         ("Hinge", 1)
     ]),
     ("Ноги", "Икры", 1),
+    ("Ноги", "Ягодицы", 1)
 ]
 
 muscle_sequence_day3 = muscle_sequence_day1.copy()

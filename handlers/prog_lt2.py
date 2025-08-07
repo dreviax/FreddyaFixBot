@@ -14,12 +14,25 @@ logger = logging.getLogger(__name__)
 
 SETS_REPS = "2 подхода по 4-8 повторений (Выполнять в 0-2 повторений в запасе)"
 
-class UpperLowerStates(StatesGroup):
+class LimbsTorsoStates(StatesGroup):
     choosing_muscle = State()
     choosing_exercise = State()
     entering_custom_exercise = State()
 
 muscle_sequence_day1 = [
+    ("Руки", "Бицепс", 1),
+    ("Руки", "Трицепс", 1),
+    ("Ноги", "Квадрицепсы", 1),
+    ("Ноги", "Приводящие", 1),
+    ("Ноги", "Бицепс бедра", [
+        ("Бицепс бедра", 1),
+        ("Hinge", 1)
+    ]),
+    ("Ноги", "Икры", 1),
+    ("Ноги", "Ягодицы", 1)
+]
+
+muscle_sequence_day2 = [
     ("Спина", "Верх спины", 1),
     ("Спина", "Широчайшие", 1),
     ("Дельты", "Передняя дельта", 1),
@@ -27,19 +40,6 @@ muscle_sequence_day1 = [
     ("Дельты", "Задняя дельта", 1),
     ("Грудь", "Верх груди", 1),
     ("Грудь", "Низ груди", 1),
-    ("Руки", "Бицепс", 1),
-    ("Руки", "Трицепс", 1),
-]
-
-muscle_sequence_day2 = [
-    ("Ноги", "Квадрицепсы", 1),
-    ("Ноги", "Бицепс бедра", [
-        ("Бицепс бедра", 1),
-        ("Hinge", 1)
-    ]),
-    ("Ноги", "Приводящие", 1),
-    ("Ноги", "Икры", 1),
-    ("Ноги", "Ягодицы", 1),
 ]
 
 muscle_sequence_day3 = muscle_sequence_day1.copy()
@@ -148,27 +148,33 @@ def get_exercise_keyboard(muscle_group: str, subgroup: str, selected_exercises: 
     builder.adjust(1)
     return builder.as_markup()
 
-async def start_upperlower2(callback: types.CallbackQuery, state: FSMContext):
-    user_id = str(callback.from_user.id)
-    data = await state.get_data()
-    days = 4  # Фиксируем 4 дня для программы верх/низ
-    
-    await state.clear()  # Очистка FSM перед началом
-    await state.set_state(UpperLowerStates.choosing_muscle)
-    await state.update_data({
-        "current_step": 0,
-        "selected": {"day1": [], "day2": [], "day3": [], "day4": []},
-        "exercise_mapping": {},
-        "selected_exercises": [],
-        "days_per_week": days,
-        "user_id": user_id,
-        "current_day": 1
-    })
-    logger.info(f"Started upperlower2 for user {user_id} with {days} days")
-    await send_next_muscle(callback, state)
-    await callback.answer()
+async def start_limbs_torso2(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        user_id = str(callback.from_user.id)
+        logger.info(f"Starting limbs_torso2 for user {user_id}")
+        data = await state.get_data()
+        days = 4
+        await state.clear()
+        await state.set_state(LimbsTorsoStates.choosing_muscle)
+        await state.update_data({
+            "current_step": 0,
+            "selected": {"day1": [], "day2": [], "day3": [], "day4": []},
+            "exercise_mapping": {},
+            "selected_exercises": [],
+            "days_per_week": days,
+            "user_id": user_id,
+            "current_day": 1
+        })
+        logger.info(f"Started limbs_torso2 for user {user_id} with {days} days")
+        await send_next_muscle(callback, state)
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"Error in start_limbs_torso2 for user {user_id}: {e}")
+        await callback.message.answer("❗ Произошла ошибка при создании программы. Попробуйте снова с /programma")
+        await callback.answer()
 
 async def send_next_muscle(message: types.CallbackQuery | types.Message, state: FSMContext):
+    logger.info(f"Calling send_next_muscle for user {message.from_user.id}")
     data = await state.get_data()
     step = data.get("current_step", 0)
     user_id = str(message.from_user.id if isinstance(message, types.Message) else message.from_user.id)
@@ -188,7 +194,7 @@ async def send_next_muscle(message: types.CallbackQuery | types.Message, state: 
             flat_sequence.append((group, subgroup, count))
 
     if step >= len(flat_sequence):
-        if current_day < 2:  # Ограничиваем выбор до 2 дней
+        if current_day < 2:
             await state.update_data({
                 "current_step": 0,
                 "current_day": current_day + 1,
@@ -227,7 +233,7 @@ async def send_next_muscle(message: types.CallbackQuery | types.Message, state: 
                     "day3": selected["day3"],
                     "day4": selected["day4"]
                 },
-                "type": "4 день верх/низ",
+                "type": "4 день конечности/торс",
                 "sets_reps": SETS_REPS
             }
             save_user_program()
@@ -309,20 +315,18 @@ async def exercise_selected(callback: types.CallbackQuery, state: FSMContext):
     exercise = exercise_data["exercise"]
     day = exercise_data["day"]
     
-    selected = data.get("selected", {"day1": [], "day2": [], "day3": [], "day4": []})
-    selected_total = selected[f"day{day}"]
-    selected_exercises = data.get("selected_exercises", [])
-    
     logger.debug(f"User {callback.from_user.id} selected exercise: {exercise} for {muscle_group}/{subgroup} (Day {day}), callback_data: {callback.data}")
     
     if exercise not in selected_for_muscle:
         selected_for_muscle.append(exercise)
+        selected_total = data.get("selected", {"day1": [], "day2": [], "day3": [], "day4": []})[f"day{day}"]
         selected_total.append(f"{subgroup}: {exercise}")
+        selected_exercises = data.get("selected_exercises", [])
         selected_exercises.append(exercise)
         
         await state.update_data({
             "selected_for_muscle": selected_for_muscle,
-            "selected": {f"day{d}": selected[f"day{d}"] for d in range(1, 5)},
+            "selected": {f"day{d}": data.get("selected", {}).get(f"day{d}", []) for d in range(1, 5)},
             "selected_exercises": selected_exercises
         })
     
@@ -370,7 +374,7 @@ async def custom_exercise_button_pressed(callback: types.CallbackQuery, state: F
     )
 
     await state.update_data({"request_message_id": message.message_id})
-    await state.set_state(UpperLowerStates.entering_custom_exercise)
+    await state.set_state(LimbsTorsoStates.entering_custom_exercise)
     await callback.answer()
 
 async def process_custom_exercise(message: types.Message, state: FSMContext):
@@ -419,10 +423,10 @@ async def process_custom_exercise(message: types.Message, state: FSMContext):
     if len(selected_for_muscle) >= required_count:
         logger.debug(f"Completed custom selection for {muscle_group}/{subgroup} (Day {day}): {selected_for_muscle}")
         await state.update_data({"current_step": data.get("current_step", 0) + 1})
-        await state.set_state(UpperLowerStates.choosing_muscle)
+        await state.set_state(LimbsTorsoStates.choosing_muscle)
         await send_next_muscle(message, state)
     else:
-        await state.set_state(UpperLowerStates.choosing_muscle)
+        await state.set_state(LimbsTorsoStates.choosing_muscle)
         await message.answer(
             f"✅ <b>Выбрано {len(selected_for_muscle)}/{required_count} для {subgroup} (День {day})</b>",
             reply_markup=get_exercise_keyboard(
@@ -437,7 +441,7 @@ async def cancel_custom_exercise(callback: types.CallbackQuery, state: FSMContex
     selected_exercises = data.get("selected_exercises", [])
     day = data.get("current_day", 1)
 
-    await state.set_state(UpperLowerStates.choosing_muscle)
+    await state.set_state(LimbsTorsoStates.choosing_muscle)
     await callback.message.edit_text(
         f"💪 <b>Выберите {data.get('required_count')} упражнение для {subgroup} (День {day})</b>",
         reply_markup=get_exercise_keyboard(
@@ -461,25 +465,26 @@ async def clear_program(callback: types.CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-def register_upperlower2_handlers(dp: Dispatcher):
-    dp.callback_query.register(start_upperlower2, F.data == "prog_upperlower2")
+def register_limbs_torso2_handlers(dp: Dispatcher):
+    logger.info("Registering limbs_torso2 handlers")
+    dp.callback_query.register(start_limbs_torso2, F.data == "prog_lt2")
     dp.callback_query.register(
         exercise_selected, 
-        UpperLowerStates.choosing_muscle,
+        LimbsTorsoStates.choosing_muscle,
         F.data.startswith("ex_")
     )
     dp.callback_query.register(
         custom_exercise_button_pressed,
-        UpperLowerStates.choosing_muscle,
+        LimbsTorsoStates.choosing_muscle,
         F.data.startswith("custom_ex_")
     )
     dp.message.register(
         process_custom_exercise,
-        UpperLowerStates.entering_custom_exercise
+        LimbsTorsoStates.entering_custom_exercise
     )
     dp.callback_query.register(
         cancel_custom_exercise,
-        UpperLowerStates.entering_custom_exercise,
+        LimbsTorsoStates.entering_custom_exercise,
         F.data == "cancel_custom_exercise"
     )
     dp.callback_query.register(

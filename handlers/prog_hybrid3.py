@@ -12,7 +12,7 @@ import re
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SETS_REPS = "3 подхода по 3-6 повторений (Выполнять в 0-2 повторений в запасе)"
+SETS_REPS = "2 подхода по 4-8 повторений (Выполнять в 0-2 повторений в запасе)"
 
 class HybridStates(StatesGroup):
     choosing_muscle_group = State()
@@ -29,17 +29,14 @@ muscle_sequence_day1 = [
     ("Грудь", "Низ груди", 1),
     ("Руки", "Бицепс", 1),
     ("Руки", "Трицепс", 1),
-    ("Ноги", "Ягодицы", 1),
-    ("Ноги", "Квадрицепсы", [
-        ("Квадрицепсы (приседания)", 1),
-        ("Квадрицепсы (разгибания)", 1)
-    ]),
+    ("Ноги", "Квадрицепсы", 1),
     ("Ноги", "Бицепс бедра", [
         ("Бицепс бедра", 1),
         ("Hinge", 1)
     ]),
     ("Ноги", "Приводящие", 1),
     ("Ноги", "Икры", 1),
+    ("Ноги", "Ягодицы", 1),
 ]
 
 muscle_sequence_day2 = [
@@ -55,17 +52,14 @@ muscle_sequence_day2 = [
 ]
 
 muscle_sequence_day3 = [
-    ("Ноги", "Ягодицы", 1),
-    ("Ноги", "Квадрицепсы", [
-        ("Квадрицепсы (приседания)", 1),
-        ("Квадрицепсы (разгибания)", 1)
-    ]),
+    ("Ноги", "Квадрицепсы", 1),
     ("Ноги", "Бицепс бедра", [
         ("Бицепс бедра", 1),
         ("Hinge", 1)
     ]),
     ("Ноги", "Приводящие", 1),
     ("Ноги", "Икры", 1),
+    ("Ноги", "Ягодицы", 1),
 ]
 
 # Транслитерация для callback_data
@@ -74,8 +68,8 @@ TRANSLIT_MAP = {
     'Дельты': 'Delty', 'Передняя дельта': 'Perednyaya_delta', 'Средняя дельта': 'Srednyaya_delta',
     'Задняя дельта': 'Zadnyaya_delta', 'Грудь': 'Grud', 'Верх груди': 'Verh_grudi',
     'Низ груди': 'Niz_grudi', 'Руки': 'Ruki', 'Бицепс': 'Bitseps', 'Трицепс': 'Tritseps',
-    'Ноги': 'Nogi', 'Ягодицы': 'Yagoditsy', 'Квадрицепсы': 'Kvadricep', 'Квадрицепсы (приседания)': 'Kvadricep_prised',
-    'Квадрицепсы (разгибания)': 'Kvadricep_razgib', 'Бицепс бедра': 'Bitseps_bedra', 'Hinge': 'Hinge',
+    'Ноги': 'Nogi', 'Ягодицы': 'Yagoditsy', 'Квадрицепсы': 'Kvadricep',
+    'Бицепс бедра': 'Bitseps_bedra', 'Hinge': 'Hinge',
     'Приводящие': 'Privodyashchie', 'Икры': 'Ikry'
 }
 
@@ -87,28 +81,17 @@ def get_exercise_keyboard(muscle_group: str, subgroup: str, selected_exercises: 
     exercises = full_body_program.get(muscle_group, {}).get(subgroup, [])
     logger.debug(f"Exercises for {muscle_group}/{subgroup} (Day {day}): {exercises}")
     
-    muscle_group_translit = translit(muscle_group)
-    subgroup_translit = translit(subgroup)
-    
     for idx, exercise in enumerate(exercises):
         if exercise not in selected_exercises:
-            callback_data = f"ex_{muscle_group_translit}_{subgroup_translit}_{idx}_{day}"
-            if len(callback_data.encode('utf-8')) > 64:
-                logger.error(f"Callback data too long: {callback_data}")
-                raise ValueError("Callback data exceeds Telegram limit")
-            logger.debug(f"Adding button with callback_data: {callback_data} for exercise: {exercise}")
+            callback_data = f"ex_{translit(muscle_group)}_{translit(subgroup)}_{idx}_day{day}"
             builder.add(InlineKeyboardButton(
                 text=exercise,
                 callback_data=callback_data
             ))
     
-    callback_data_custom = f"custom_ex_{muscle_group_translit}_{subgroup_translit}_{day}"
-    if len(callback_data_custom.encode('utf-8')) > 64:
-        logger.error(f"Custom callback data too long: {callback_data_custom}")
-        raise ValueError("Custom callback data exceeds Telegram limit")
     builder.add(InlineKeyboardButton(
         text="✍️ Вписать свое упражнение",
-        callback_data=callback_data_custom
+        callback_data=f"custom_ex_{translit(muscle_group)}_{translit(subgroup)}_day{day}"
     ))
     
     builder.adjust(1)
@@ -118,36 +101,34 @@ async def start_hybrid3(callback: types.CallbackQuery, state: FSMContext):
     user_id = str(callback.from_user.id)
     data = await state.get_data()
     days = data.get("days", 3)
-    
+
     await state.clear()  # Очистка FSM перед началом
     await state.set_state(HybridStates.choosing_muscle_group)
     await state.update_data({
+        "current_day": 1,
         "current_step": 0,
-        "selected": {"day1": [], "day2": [], "day3": []},
+        "selected": [],
         "exercise_mapping": {},
         "selected_exercises": [],
         "days_per_week": days,
         "user_id": user_id,
-        "current_day": 1
+        "program": []
     })
-    logger.info(f"Started hybrid3 for user {user_id} with {days} days")
+    logger.info(f"Starting Hybrid 3.0 for user {user_id} with {days} days")
     await send_next_muscle(callback, state)
     await callback.answer()
 
 async def send_next_muscle(message: types.CallbackQuery | types.Message, state: FSMContext):
     data = await state.get_data()
     step = data.get("current_step", 0)
-    user_id = str(message.from_user.id if isinstance(message, types.Message) else message.from_user.id)
     current_day = data.get("current_day", 1)
+    user_id = str(message.from_user.id if isinstance(message, types.Message) else message.from_user.id)
 
-    muscle_seq = (
-        muscle_sequence_day1 if current_day == 1 else
-        muscle_sequence_day2 if current_day == 2 else
-        muscle_sequence_day3
-    )
-
+    muscle_sequences = [muscle_sequence_day1, muscle_sequence_day2, muscle_sequence_day3]
+    current_sequence = muscle_sequences[current_day - 1]
+    
     flat_sequence = []
-    for group, subgroup, count in muscle_seq:
+    for group, subgroup, count in current_sequence:
         if isinstance(count, list):
             for sub_subgroup, sub_count in count:
                 flat_sequence.append((group, sub_subgroup, sub_count))
@@ -155,76 +136,64 @@ async def send_next_muscle(message: types.CallbackQuery | types.Message, state: 
             flat_sequence.append((group, subgroup, count))
 
     if step >= len(flat_sequence):
+        selected = data.get("selected", [])
+        program = data.get("program", [])
+        program.append({"day": current_day, "exercises": selected})
+        
+        expected_count = sum(1 if isinstance(count, int) else sum(sub_count for _, sub_count in count) for _, _, count in current_sequence)
+        if len(selected) != expected_count:
+            logger.error(f"Incomplete program for user {user_id}, Day {current_day}: expected {expected_count}, got {len(selected)} exercises: {selected}")
+            await message.answer("❗ Ошибка: не все упражнения выбраны. Начните заново с /programma")
+            await state.clear()
+            return
+
         if current_day < 3:
             await state.update_data({
-                "current_step": 0,
                 "current_day": current_day + 1,
-                "selected_exercises": []
+                "current_step": 0,
+                "selected": [],
+                "exercise_mapping": {},
+                "selected_exercises": [],
+                "program": program
             })
-            logger.info(f"Moving to Day {current_day + 1} for user {user_id}")
+            logger.info(f"Advancing to Day {current_day + 1} for user {user_id}")
             await send_next_muscle(message, state)
             return
+
+        user_program[user_id] = {
+            "days": data.get("days_per_week", 3),
+            "program": program,
+            "type": "Hybrid 3.0",
+            "sets_reps": SETS_REPS
+        }
+        save_user_program()
+
+        logger.info(f"Saved program for user {user_id}: {user_program[user_id]}")
+
+        if isinstance(message, types.CallbackQuery):
+            await message.message.edit_text("/programma - просмотреть программу")
         else:
-            selected = data.get("selected", {"day1": [], "day2": [], "day3": []})
-            days = data.get("days_per_week", 3)
-
-            expected_counts = {
-                "day1": sum(1 if isinstance(count, int) else len(count) for _, _, count in muscle_sequence_day1),
-                "day2": sum(1 if isinstance(count, int) else len(count) for _, _, count in muscle_sequence_day2),
-                "day3": sum(1 if isinstance(count, int) else len(count) for _, _, count in muscle_sequence_day3)
-            }
-            for day in ["day1", "day2", "day3"]:
-                if len(selected[day]) != expected_counts[day]:
-                    logger.error(f"Incomplete program for user {user_id} on {day}: expected {expected_counts[day]}, got {len(selected[day])} exercises: {selected[day]}")
-                    await message.answer("❗ Ошибка: не все упражнения выбраны. Начните заново с /programma")
-                    await state.clear()
-                    return
-
-            user_program[user_id] = {
-                "days": days,
-                "program": {
-                    "day1": selected["day1"],
-                    "day2": selected["day2"],
-                    "day3": selected["day3"]
-                },
-                "type": "3 day гибрид верх/низа и фулбади",
-                "sets_reps": SETS_REPS
-            }
-            save_user_program()
-
-            logger.info(f"Saved program for user {user_id}: {user_program[user_id]}")
-
-            if isinstance(message, types.CallbackQuery):
-                await message.message.edit_text("/programma - просмотреть программу")
-            else:
-                await message.answer("/programma - просмотреть программу")
-            await state.clear()
-            logger.info(f"Program completed for user {user_id}")
-            return
+            await message.answer("/programma - просмотреть программу")
+        await state.clear()
+        logger.info(f"Program completed for user {user_id}")
+        return
 
     muscle_group, subgroup, required_count = flat_sequence[step]
     exercises = full_body_program.get(muscle_group, {}).get(subgroup, [])
 
     if not exercises:
-        logger.warning(f"No exercises found for {muscle_group}/{subgroup} in full_body_program")
+        logger.warning(f"No exercises found for {muscle_group}/{subgroup} (Day {current_day}) in full_body_program")
         await state.update_data({"current_step": step + 1})
         await send_next_muscle(message, state)
         return
 
-    muscle_group_translit = translit(muscle_group)
-    subgroup_translit = translit(subgroup)
-
     exercise_mapping = {}
     for idx, exercise in enumerate(exercises):
-        callback_data = f"ex_{muscle_group_translit}_{subgroup_translit}_{idx}_{current_day}"
-        if len(callback_data.encode('utf-8')) > 64:
-            logger.error(f"Callback data too long: {callback_data}")
-            raise ValueError("Callback data exceeds Telegram limit")
+        callback_data = f"ex_{translit(muscle_group)}_{translit(subgroup)}_{idx}_day{current_day}"
         exercise_mapping[callback_data] = {
             "muscle_group": muscle_group,
             "subgroup": subgroup,
-            "exercise": exercise,
-            "day": current_day
+            "exercise": exercise
         }
 
     logger.debug(f"Exercise mapping for user {user_id}, {muscle_group}/{subgroup} (Day {current_day}): {exercise_mapping}")
@@ -235,10 +204,14 @@ async def send_next_muscle(message: types.CallbackQuery | types.Message, state: 
         "required_count": required_count,
         "selected_for_muscle": [],
         "exercise_mapping": exercise_mapping,
-        "selected_exercises": data.get("selected_exercises", [])
+        "selected_exercises": data.get("selected_exercises", []),
+        "current_day": current_day
     })
 
-    text = f"💪 <b>Выберите {required_count} упражнение для {subgroup} (День {current_day})</b>\n📋 Доступные варианты:"
+    text = (
+        f"💪 <b>Выберите {required_count} упражнение для {subgroup} (День {current_day})</b>\n"
+        f"📋 Доступные варианты:"
+    )
     keyboard = get_exercise_keyboard(muscle_group, subgroup, data.get("selected_exercises", []), current_day)
 
     if isinstance(message, types.CallbackQuery):
@@ -246,12 +219,13 @@ async def send_next_muscle(message: types.CallbackQuery | types.Message, state: 
     else:
         await message.answer(text, reply_markup=keyboard)
 
-    logger.info(f"Sent muscle group: {muscle_group}, subgroup: {subgroup}, step: {step}, user_id: {user_id}, day: {current_day}")
+    logger.info(f"Sent muscle group: {muscle_group}, subgroup: {subgroup}, step: {step}, day: {current_day}, user_id: {user_id}")
 
 async def exercise_selected(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     required_count = data.get("required_count", 1)
     selected_for_muscle = data.get("selected_for_muscle", [])
+    current_day = data.get("current_day", 1)
     
     logger.debug(f"Received callback_data: {callback.data}, available mappings: {data.get('exercise_mapping', {}).keys()}")
 
@@ -268,13 +242,11 @@ async def exercise_selected(callback: types.CallbackQuery, state: FSMContext):
     muscle_group = exercise_data["muscle_group"]
     subgroup = exercise_data["subgroup"]
     exercise = exercise_data["exercise"]
-    day = exercise_data["day"]
     
-    selected = data.get("selected", {"day1": [], "day2": [], "day3": []})
-    selected_total = selected[f"day{day}"]
+    selected_total = data.get("selected", [])
     selected_exercises = data.get("selected_exercises", [])
     
-    logger.debug(f"User {callback.from_user.id} selected exercise: {exercise} for {muscle_group}/{subgroup} (Day {day}), callback_data: {callback.data}")
+    logger.debug(f"User {callback.from_user.id} selected exercise: {exercise} for {muscle_group}/{subgroup} (Day {current_day}), callback_data: {callback.data}")
     
     if exercise not in selected_for_muscle:
         selected_for_muscle.append(exercise)
@@ -283,21 +255,21 @@ async def exercise_selected(callback: types.CallbackQuery, state: FSMContext):
         
         await state.update_data({
             "selected_for_muscle": selected_for_muscle,
-            "selected": {f"day{d}": selected[f"day{d}"] for d in range(1, 4)},
+            "selected": selected_total,
             "selected_exercises": selected_exercises
         })
     
-    logger.info(f"Updated selected exercises for user {callback.from_user.id} (Day {day}): {selected_total}")
+    logger.info(f"Updated selected exercises for user {callback.from_user.id}: {selected_total}")
 
     if len(selected_for_muscle) >= required_count:
-        logger.debug(f"Completed selection for {muscle_group}/{subgroup} (Day {day}): {selected_for_muscle}")
+        logger.debug(f"Completed selection for {muscle_group}/{subgroup} (Day {current_day}): {selected_for_muscle}")
         await state.update_data({"current_step": data.get("current_step", 0) + 1})
         await send_next_muscle(callback, state)
     else:
         await callback.message.edit_text(
-            f"✅ <b>Выбрано {len(selected_for_muscle)}/{required_count} для {subgroup} (День {day})</b>",
+            f"✅ <b>Выбрано {len(selected_for_muscle)}/{required_count} для {subgroup} (День {current_day})</b>",
             reply_markup=get_exercise_keyboard(
-                muscle_group, subgroup, selected_exercises, day
+                muscle_group, subgroup, selected_exercises, current_day
             )
         )
     
@@ -309,21 +281,14 @@ async def custom_exercise_button_pressed(callback: types.CallbackQuery, state: F
     subgroup = data.get("current_subgroup")
     required_count = data.get("required_count", 1)
     selected_for_muscle = data.get("selected_for_muscle", [])
-    day = data.get("current_day", 1)
+    current_day = data.get("current_day", 1)
 
     if len(selected_for_muscle) >= required_count:
         await callback.answer("❗ Вы уже выбрали максимум упражнений для этой группы!")
         return
 
-    muscle_group_translit = translit(muscle_group)
-    subgroup_translit = translit(subgroup)
-    callback_data_custom = f"custom_ex_{muscle_group_translit}_{subgroup_translit}_{day}"
-    if len(callback_data_custom.encode('utf-8')) > 64:
-        logger.error(f"Custom callback data too long: {callback_data_custom}")
-        raise ValueError("Custom callback data exceeds Telegram limit")
-
     message = await callback.message.edit_text(
-        f"✍️ <b>Введите свое упражнение для {subgroup} (День {day})</b>\n"
+        f"✍️ <b>Введите свое упражнение для {subgroup} (День {current_day})</b>\n"
         "Напишите название (например, 'Жим ногами в тренажере'):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_custom_exercise")]
@@ -336,24 +301,24 @@ async def custom_exercise_button_pressed(callback: types.CallbackQuery, state: F
 
 async def process_custom_exercise(message: types.Message, state: FSMContext):
     data = await state.get_data()
-    custom_exercise = message.text.strip()
-    day = data.get("current_day", 1)
     muscle_group = data.get("current_muscle")
     subgroup = data.get("current_subgroup")
     required_count = data.get("required_count", 1)
+    current_day = data.get("current_day", 1)
+    custom_exercise = message.text.strip()
 
     if not custom_exercise or len(custom_exercise) > 100:
         await message.answer(
-            "❗ Название упражнения не может быть пустым или длиннее 100 символов!\nПопробуйте снова:"
+            "❗ Название упражнения не может быть пустым или длиннее 100 символов!\n"
+            "Попробуйте снова:"
         )
         return
 
     selected_for_muscle = data.get("selected_for_muscle", [])
-    selected = data.get("selected", {"day1": [], "day2": [], "day3": []})
-    selected_total = selected[f"day{day}"]
+    selected_total = data.get("selected", [])
     selected_exercises = data.get("selected_exercises", [])
 
-    logger.debug(f"User {message.from_user.id} added custom exercise: {custom_exercise} for {muscle_group}/{subgroup} (Day {day})")
+    logger.debug(f"User {message.from_user.id} added custom exercise: {custom_exercise} for {muscle_group}/{subgroup} (Day {current_day})")
 
     if custom_exercise not in selected_for_muscle:
         selected_for_muscle.append(custom_exercise)
@@ -362,11 +327,11 @@ async def process_custom_exercise(message: types.Message, state: FSMContext):
 
         await state.update_data({
             "selected_for_muscle": selected_for_muscle,
-            "selected": {f"day{d}": selected[f"day{d}"] for d in range(1, 4)},
+            "selected": selected_total,
             "selected_exercises": selected_exercises
         })
 
-    logger.info(f"Updated selected exercises for user {message.from_user.id} (Day {day}): {selected_total}")
+    logger.info(f"Updated selected exercises for user {message.from_user.id}: {selected_total}")
 
     request_message_id = data.get("request_message_id")
     if request_message_id:
@@ -378,16 +343,16 @@ async def process_custom_exercise(message: types.Message, state: FSMContext):
     await message.delete()
 
     if len(selected_for_muscle) >= required_count:
-        logger.debug(f"Completed custom selection for {muscle_group}/{subgroup} (Day {day}): {selected_for_muscle}")
+        logger.debug(f"Completed custom selection for {muscle_group}/{subgroup} (Day {current_day}): {selected_for_muscle}")
         await state.update_data({"current_step": data.get("current_step", 0) + 1})
         await state.set_state(HybridStates.choosing_muscle_group)
         await send_next_muscle(message, state)
     else:
         await state.set_state(HybridStates.choosing_muscle_group)
         await message.answer(
-            f"✅ <b>Выбрано {len(selected_for_muscle)}/{required_count} для {subgroup} (День {day})</b>",
+            f"✅ <b>Выбрано {len(selected_for_muscle)}/{required_count} для {subgroup} (День {current_day})</b>",
             reply_markup=get_exercise_keyboard(
-                muscle_group, subgroup, selected_exercises, day
+                muscle_group, subgroup, selected_exercises, current_day
             )
         )
 
@@ -396,13 +361,13 @@ async def cancel_custom_exercise(callback: types.CallbackQuery, state: FSMContex
     muscle_group = data.get("current_muscle")
     subgroup = data.get("current_subgroup")
     selected_exercises = data.get("selected_exercises", [])
-    day = data.get("current_day", 1)
+    current_day = data.get("current_day", 1)
 
     await state.set_state(HybridStates.choosing_muscle_group)
     await callback.message.edit_text(
-        f"💪 <b>Выберите {data.get('required_count')} упражнение для {subgroup} (День {day})</b>",
+        f"💪 <b>Выберите {data.get('required_count')} упражнение для {subgroup} (День {current_day})</b>",
         reply_markup=get_exercise_keyboard(
-            muscle_group, subgroup, selected_exercises, day
+            muscle_group, subgroup, selected_exercises, current_day
         )
     )
     await callback.answer()
