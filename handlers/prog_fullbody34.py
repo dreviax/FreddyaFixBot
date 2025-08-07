@@ -65,7 +65,7 @@ async def start_fullbody34(callback: types.CallbackQuery, state: FSMContext):
     user_id = str(callback.from_user.id)
 
     data = await state.get_data()
-    days = data.get("days", 34)  # Устанавливаем 34 как индикатор 3/4 дней
+    days = data.get("days", "3/4")
 
     await state.clear()  # Очистка FSM перед началом
     await state.set_state(FullBody34States.choosing_muscle_group)

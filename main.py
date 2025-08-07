@@ -440,7 +440,7 @@ async def programma_cmd(message: types.Message, state: FSMContext):
 
 @dp.callback_query(TrainingProgramStates.choosing_days, F.data.startswith("days_"))
 async def handle_days_selection(callback: types.CallbackQuery, state: FSMContext):
-    days = int(callback.data.split("_")[1])
+    days = str(callback.data.split("_")[1])
     await state.update_data(days=days)
 
     await callback.message.edit_text(

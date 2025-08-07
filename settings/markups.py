@@ -23,29 +23,29 @@ def get_days_keyboard():
         [InlineKeyboardButton(text="📅 2 дня", callback_data="days_2")],
         [InlineKeyboardButton(text="📅 3 дня", callback_data="days_3")],
         [InlineKeyboardButton(text="📅 4 дня", callback_data="days_4")],
-        [InlineKeyboardButton(text="📅 3/4 дня", callback_data="days_34")]
+        [InlineKeyboardButton(text="📅 3/4 дня", callback_data="days_3/4")]
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def get_program_keyboard(days: int) -> InlineKeyboardMarkup:
-    if days == 2:
+def get_program_keyboard(days: str) -> InlineKeyboardMarkup:
+    if days == "2":
         buttons = [
             InlineKeyboardButton(text="💪 Фуллбоди x2", callback_data="prog_fullbody2")
         ]
-    elif days == 3:
+    elif days == "3":
         buttons = [
             InlineKeyboardButton(text="💪 Фуллбоди x3", callback_data="prog_fullbody3"),
             InlineKeyboardButton(text="🔄 Гибрид верх-низ + фулбади", callback_data="prog_hybrid3")
         ]
-    elif days == 4:
+    elif days == "4":
         buttons = [
             InlineKeyboardButton(text="🔀 Верх-низ x2", callback_data="prog_upperlower2"),
             InlineKeyboardButton(text="⚖️ Перед-зад x2", callback_data="prog_ap2"),
             InlineKeyboardButton(text="⚖️ Конечности-торс x2", callback_data="prog_lt2")
         ]
-    elif days == 34:
+    elif days == "3/4":
         buttons = [
-            InlineKeyboardButton(text="🔀 Фуллбоди x3/4", callback_data="prog_fullbody34"),
+            InlineKeyboardButton(text="🔀 Фбеод", callback_data="prog_fullbody34"),
         ]
     else:
         buttons = []
